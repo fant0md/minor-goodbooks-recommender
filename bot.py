@@ -16,7 +16,7 @@ pd.options.mode.chained_assignment = None
 
 ratings = pd.read_csv('data/ratings.csv')
 #ratings_random = pd.read_csv('data/ratings_random.csv')
-book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
+book_map = pd.read_csv('data/books.csv')[['book_id', 'id', 'title', 'authors']]
 
 def recommend_list(user_ratings, ratings_data, algorithm, verbose = False, remove_rated = True):
     reader = Reader(rating_scale=(1, 5))
@@ -89,11 +89,14 @@ class LightFM_Recommender():
         return interactions_upd, weights_upd
             
     def build_item_features(self, item_features):
+        from sklearn.preprocessing import normalize
         feats_kostyl = sp.hstack((
             item_features,
             sp.coo_matrix((item_features.shape[0], item_features.shape[0]-item_features.shape[1])),
         ))
-        return sp.identity(item_features.shape[0])+feats_kostyl
+        #return sp.identity(item_features.shape[0])+feats_kostyl
+        #return feats_kostyl
+        return normalize(feats_kostyl, norm='l1', axis=1)
         
         
     def fit(self, ratings_data, algorithm, user_feats=None, item_feats=None):
@@ -145,7 +148,7 @@ genres = sp.load_npz('data/genres.npz')
 authors = sp.load_npz('data/authors.npz')
 languages = sp.load_npz('data/languages.npz')
 features = sp.hstack((
-    #genres,
+    genres,
     authors,
     languages,
     #np.array(books['original_publication_year'])[:, None]
@@ -214,14 +217,19 @@ def fetch_user_ratings_goodreads(goodreads_id):
 
 def fancy_title(title):
     book_map = pd.read_csv('data/books.csv')[['title', 'authors']]
-    return '<b>' + title + '</b>' + '\n' + str(book_map.loc[book_map['title']==title, 'authors'].values[0])# + '\n\n'
+    return '<b>' + f'<a href="https://www.goodreads.com/book/show/{book_map.loc[book_map['title']==title, 'book_id'].values[0]}">' + title + '</a>' + '</b>' + '\n' + str(book_map.loc[book_map['title']==title, 'authors'].values[0]) + '\n\n'
+
+#f'<a href="https://www.goodreads.com/book/show/{book_map.loc[book_map['title']==title, 'book_id'].values[0]}">' + title + '</a>'
+
+#def fancy_list(reclist):
+#    text = ''
+#    for i, title in enumerate(reclist):
+#        text = text + fancy_title(title) + '\n\n'
+#        
+#    return text
 
 def fancy_list(reclist):
-    text = ''
-    for i, title in enumerate(reclist):
-        text = text + fancy_title(title) + '\n\n'
-        
-    return text
+    return ' '.join([fancy_title(title) for title in reclist])
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
@@ -257,7 +265,10 @@ def start(update, context):
 
 def recommend(update, context):
     text = "Choose recommender engine"
-    buttons = [['KNN', 'SVD', 'LightFM', 'Hybrid LightFM']]
+    buttons = [[#'KNN', 
+                #'SVD', 
+                'LightFM', 
+                'Hybrid LightFM']]
 
     keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
     update.message.reply_text(text=text, reply_markup=keyboard)
@@ -381,8 +392,8 @@ convhandler = ConversationHandler(
         SELECTING_RATING: [MessageHandler(Filters.regex('^[1-5]$'), save_book_rating),
                            MessageHandler(Filters.regex('^Finish$'), rating_finished),
                            MessageHandler(Filters.regex('^Cancel$'), ask_book_rating)],
-        SELECTING_ENGINE: [MessageHandler(Filters.regex('^KNN$'), rec_knn),
-                           MessageHandler(Filters.regex('^SVD$'), rec_svd),
+        SELECTING_ENGINE: [#MessageHandler(Filters.regex('^KNN$'), rec_knn),
+                           #MessageHandler(Filters.regex('^SVD$'), rec_svd),
                            MessageHandler(Filters.regex('^LightFM$'), rec_lightfm),
                            MessageHandler(Filters.regex('^Hybrid LightFM$'), rec_lightfm_hybrid)]
     },
@@ -396,13 +407,11 @@ def main():
     updater = Updater(token=TOKEN, use_context=True)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(convhandler)
-#    updater.start_polling()
+    #updater.start_polling()
     updater.start_webhook(listen="0.0.0.0",
                           port=PORT,
                           url_path=TOKEN,
-			  webhook_url="https://goodbooks-bot.herokuapp.com/" + TOKEN)
-
-    #updater.bot.set_webhook('goodbooks-bot' + '1776136579:AAEkS7z3Lr3PrZMDMiXpWKD-OpR7P305K4M')
+                          webhook_url="https://goodbooks-bot.herokuapp.com/" + TOKEN)
     updater.idle()
 
 if __name__ == '__main__':
