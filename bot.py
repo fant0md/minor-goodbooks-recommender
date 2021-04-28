@@ -4,6 +4,7 @@ import scipy.sparse as sp
 import time
 import copy
 import os
+import pickle
 from surprise import Reader
 from surprise import Dataset as SurpriseDataset
 from surprise import KNNWithMeans, SVD, SVDpp
@@ -14,7 +15,7 @@ from fuzzywuzzy import process
 pd.options.mode.chained_assignment = None
 
 #ratings = pd.read_csv('data/ratings.csv')
-ratings_random = pd.read_csv('data/ratings_random.csv')
+#ratings_random = pd.read_csv('data/ratings_random.csv')
 book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
 
 def recommend_list(user_ratings, ratings_data, algorithm, verbose = False, remove_rated = True):
@@ -150,13 +151,19 @@ features = sp.hstack((
     #np.array(books['original_publication_year'])[:, None]
 )).tocsr()
 
-model = LightFM(learning_rate=0.05, loss='bpr', random_state=1)
-lightfm = LightFM_Recommender()
-lightfm.fit(ratings_random, model)
+#model = LightFM(learning_rate=0.05, loss='bpr', random_state=1)
+#lightfm = LightFM_Recommender()
+#lightfm.fit(ratings_random, model)
 
-model = LightFM(learning_rate=0.05, loss='bpr', random_state=1)
-lightfm_hybrid = LightFM_Recommender()
-lightfm_hybrid.fit(ratings_random, model, item_feats = features)
+#model = LightFM(learning_rate=0.05, loss='bpr', random_state=1)
+#lightfm_hybrid = LightFM_Recommender()
+#lightfm_hybrid.fit(ratings_random, model, item_feats = features)
+
+with open('lightfm.pickle', 'rb') as f:
+    lightfm = pickle.load(f)
+
+with open('lightfm_hybrid.pickle', 'rb') as f:
+    lightfm_hybrid = pickle.load(f)
 
 def fetch_user_ratings_dataset(user_id):
     df = ratings.loc[ratings['user_id']==user_id, :]
