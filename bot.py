@@ -139,7 +139,7 @@ class LightFM_Recommender():
         scores = algorithm_local.predict(0, np.arange(self.n_items))
         top_items = titles[np.argsort(-scores)]
         
-        return top_items[:n]
+        return top_items[~np.isin(top_items, known_positives)][:n]
 
 genres = sp.load_npz('data/genres.npz')
 authors = sp.load_npz('data/authors.npz')
