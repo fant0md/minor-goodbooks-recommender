@@ -228,7 +228,7 @@ def fancy_title(title):
 #    return text
 
 def fancy_list(reclist):
-    return ' '.join([fancy_title(title) for title in reclist])
+    return ''.join([fancy_title(title) for title in reclist])
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
@@ -358,25 +358,25 @@ def rec_knn(update, context):
     warn = update.message.reply_text(text='This takes time')
     knn = KNNWithMeans(k=9, verbose=False)
     reclist = recommend_list(context.user_data['user_ratings'], ratings, knn, verbose = False)
-    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML')
+    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML', link_preview = False)
 
 def rec_svd(update, context):
     warn = update.message.reply_text(text='This takes time')
     svd = SVD(n_factors=20, verbose=False)
     reclist = recommend_list(context.user_data['user_ratings'], ratings, svd, verbose = False)
-    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML')
+    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML', link_preview = False)
 
 def rec_lightfm(update, context):
     warn = update.message.reply_text(text='This takes time')
     #reclist = recommend_list_lightfm(context.user_data['user_ratings'], ratings, model, verbose = False)
     reclist = lightfm.predict_list(context.user_data['user_ratings'])
-    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML')
+    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML', link_preview = False)
 
 def rec_lightfm_hybrid(update, context):
     warn = update.message.reply_text(text='This takes time')
     #reclist = recommend_list_lightfm(context.user_data['user_ratings'], ratings, model, verbose = False)
     reclist = lightfm_hybrid.predict_list(context.user_data['user_ratings'])
-    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML')
+    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML', link_preview = False)
 
 convhandler = ConversationHandler(
     entry_points = [CommandHandler('start', start)],
