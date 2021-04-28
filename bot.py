@@ -14,7 +14,7 @@ from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 pd.options.mode.chained_assignment = None
 
-#ratings = pd.read_csv('data/ratings.csv')
+ratings = pd.read_csv('data/ratings.csv')
 #ratings_random = pd.read_csv('data/ratings_random.csv')
 book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
 
