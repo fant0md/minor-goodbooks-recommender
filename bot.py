@@ -389,17 +389,20 @@ convhandler = ConversationHandler(
     fallbacks = [CommandHandler('start', start)]
 )
 
+TOKEN = '1776136579:AAEkS7z3Lr3PrZMDMiXpWKD-OpR7P305K4M'
+PORT = int(os.environ.get('PORT', '8443'))
+
 def main():
-    updater = Updater(token='1776136579:AAEkS7z3Lr3PrZMDMiXpWKD-OpR7P305K4M', use_context=True)
+    updater = Updater(token=TOKEN, use_context=True)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(convhandler)
 #    updater.start_polling()
     updater.start_webhook(listen="0.0.0.0",
-                          port=int(os.environ.get('PORT', '8443')),
-                          url_path='1776136579:AAEkS7z3Lr3PrZMDMiXpWKD-OpR7P305K4M')
+                          port=PORT,
+                          url_path=TOKEN,
+			  webhook_url="https://goodbooks-bot.herokuapp.com/" + TOKEN)
 
-    updater.bot.set_webhook('goodbooks-bot' + '1776136579:AAEkS7z3Lr3PrZMDMiXpWKD-OpR7P305K4M')
-
+    #updater.bot.set_webhook('goodbooks-bot' + '1776136579:AAEkS7z3Lr3PrZMDMiXpWKD-OpR7P305K4M')
     updater.idle()
 
 if __name__ == '__main__':
