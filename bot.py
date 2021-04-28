@@ -216,7 +216,7 @@ def fetch_user_ratings_goodreads(goodreads_id):
     else: return df
 
 def fancy_title(title):
-    book_map = pd.read_csv('data/books.csv')[['title', 'authors']]
+    book_map = pd.read_csv('data/books.csv')[['id', 'book_id', 'title', 'authors']]
     site_id = book_map.loc[book_map['title']==title, 'book_id'].values[0]
     return '<b>' + f'<a href="https://www.goodreads.com/book/show/{site_id}">' + title + '</a>' + '</b>' + '\n' + str(book_map.loc[book_map['title']==title, 'authors'].values[0]) + '\n\n'
 
