@@ -1,0 +1,11 @@
+.ipynb_checkpoints/
+
+__pycache__/
+
+data/books_xml/
+
+bot.ipynb
+
+goodreads-parser.ipynb
+
+recommendation-lists.ipynb
