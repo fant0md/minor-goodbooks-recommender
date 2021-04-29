@@ -18,17 +18,17 @@ ratings = pd.read_csv('data/ratings.csv')
 #ratings_random = pd.read_csv('data/ratings_random.csv')
 book_map = pd.read_csv('data/books.csv')[['book_id', 'id', 'title', 'authors']]
 
-with open('lightfm.pickle', 'rb') as f:
-    lightfm = pickle.load(f)
-with open('lightfm_hybrid.pickle', 'rb') as f:
-    lightfm_hybrid = pickle.load(f)
-
 from thisproject import (
     LightFM_Recommender,
     recommend_list,
     fetch_user_ratings_dataset,
     fetch_user_ratings_goodreads
 )
+
+with open('lightfm.pickle', 'rb') as f:
+    lightfm = pickle.load(f)
+with open('lightfm_hybrid.pickle', 'rb') as f:
+    lightfm_hybrid = pickle.load(f)
 
 def fancy_title(title):
     #book_map = pd.read_csv('data/books.csv')[['id', 'book_id', 'title', 'authors']]
