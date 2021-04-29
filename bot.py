@@ -9,7 +9,7 @@ from surprise import Reader
 from surprise import Dataset as SurpriseDataset
 from surprise import KNNWithMeans, SVD, SVDpp
 from lightfm import LightFM
-from lightfm.data import Dataset as LightfmDataset
+#from lightfm.data import Dataset as LightfmDataset
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 pd.options.mode.chained_assignment = None
@@ -19,24 +19,31 @@ ratings = pd.read_csv('data/ratings.csv')
 book_map = pd.read_csv('data/books.csv')[['book_id', 'id', 'title', 'authors']]
 
 def recommend_list(user_ratings, ratings_data, algorithm, verbose = False, remove_rated = True):
-    reader = Reader(rating_scale=(1, 5))
-    data_full = SurpriseDataset.load_from_df(user_ratings.append(ratings_data), reader).build_full_trainset()
-    
+    reader = Reader(rating_scale = (1, 5))
+    data_full = SurpriseDataset.load_from_df(
+        user_ratings.copy().append(ratings_data), reader
+    ).build_full_trainset()
     algorithm.fit(data_full)
-    
     preds = [algorithm.predict(0, i).est for i in data_full['book_id'].unique()]
-    #for i in data_full['book_id'].unique():
-    #    preds.append(algorithm.predict(user_ratings.user_id.unique()[0], i).est)
     
-    recs = pd.DataFrame({'book_id' : data_full['book_id'].unique(), 'estimated_rating' : preds})
+    titles = book_map['title'].values
+    books_sorted = titles[np.argsort(-preds)]
+    known_positives = titles[user_ratings['book_id'].unique()-1]
     
     if remove_rated:
-        recs = recs.loc[~recs['book_id'].isin(user_ratings['book_id'])]
-    recs = recs.sort_values('estimated_rating', ascending = False).head(10)
+        return books_sorted[~np.isin(books_sorted, known_positives)][:n]
+    else:
+        return books_sorted[:n]
     
-    book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
+    #recs = pd.DataFrame({'book_id' : data_full['book_id'].unique(), 'estimated_rating' : preds})
     
-    return [book_map.loc[i-1, 'title'] for i in recs['book_id']]
+    #if remove_rated:
+    #    recs = recs.loc[~recs['book_id'].isin(user_ratings['book_id'])]
+    #recs = recs.sort_values('estimated_rating', ascending = False).head(10)
+    
+    #book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
+    
+    #return [book_map.loc[i-1, 'title'] for i in recs['book_id']]
 
 class LightFM_Recommender():
     def __init__(self):
@@ -96,7 +103,8 @@ class LightFM_Recommender():
         ))
         #return sp.identity(item_features.shape[0])+feats_kostyl
         #return feats_kostyl
-        return normalize(feats_kostyl, norm='l1', axis=1)
+        #return normalize(feats_kostyl, norm='l1', axis=1)
+        return feats_kostyl
         
         
     def fit(self, ratings_data, algorithm, user_feats=None, item_feats=None):
@@ -137,22 +145,23 @@ class LightFM_Recommender():
         )
         algorithm_local.item_biases = np.zeros_like(algorithm_local.item_biases)
         
-        titles = pd.read_csv('data/books.csv')['title'].values
+        #titles = pd.read_csv('data/books.csv')['title'].values
+        titles = book_map['title'].values
         known_positives = titles[weights_new.tocsr()[0].indices]
-        scores = algorithm_local.predict(0, np.arange(self.n_items))
-        top_items = titles[np.argsort(-scores)]
+        preds = algorithm_local.predict(0, np.arange(self.n_items))
+        books_sorted = titles[np.argsort(-preds)]
         
-        return top_items[~np.isin(top_items, known_positives)][:n]
+        return books_sorted[~np.isin(books_sorted, known_positives)][:n]
 
-genres = sp.load_npz('data/genres.npz')
-authors = sp.load_npz('data/authors.npz')
-languages = sp.load_npz('data/languages.npz')
-features = sp.hstack((
-    genres,
-    authors,
-    languages,
-    #np.array(books['original_publication_year'])[:, None]
-)).tocsr()
+#genres = sp.load_npz('data/genres.npz')
+#authors = sp.load_npz('data/authors.npz')
+#languages = sp.load_npz('data/languages.npz')
+#features = sp.hstack((
+#    genres,
+#    authors,
+#    languages,
+#    #np.array(books['original_publication_year'])[:, None]
+#)).tocsr()
 
 #model = LightFM(learning_rate=0.05, loss='bpr', random_state=1)
 #lightfm = LightFM_Recommender()
@@ -164,12 +173,13 @@ features = sp.hstack((
 
 with open('lightfm.pickle', 'rb') as f:
     lightfm = pickle.load(f)
-
 with open('lightfm_hybrid.pickle', 'rb') as f:
     lightfm_hybrid = pickle.load(f)
 
 def fetch_user_ratings_dataset(user_id):
-    df = ratings.loc[ratings['user_id']==user_id, :]
+    if user_id < 1 or user_id > ratings['user_id'].nunique():
+        raise ValueError:
+    df = ratings.loc[ratings['user_id'] == user_id, :]
     df['user_id'] = np.repeat(0, df.shape[0])
     return df
 
@@ -178,14 +188,16 @@ def fetch_user_ratings_goodreads(goodreads_id):
     url = f"https://www.goodreads.com/review/list/{goodreads_id}?print=true"
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 \
     (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-    html_output = requests.get(url=url, headers = headers).text
+    html_output = requests.get(url = url, headers = headers).text
 
     import re
+    if re.search('</a>\n        Oops - we couldn\'t find that user.\n      </div>', html_output):
+        raise ValueError: 'User does not exist'
+    
     num_books = int(re.findall('books on Goodreads \((.*) books\)', html_output)[0])
-
-    for p in range(2, (num_books // 20 + (num_books % 20 > 0) + 1)):
+    for p in np.arange(2, (num_books // 20 + (num_books % 20 > 0) + 1)):
         url = f"https://www.goodreads.com/review/list/{goodreads_id}?page={p}&print=true"
-        html_output += requests.get(url=url, headers = headers).text
+        html_output += requests.get(url = url, headers = headers).text
 
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(html_output, 'html.parser')
@@ -204,31 +216,37 @@ def fetch_user_ratings_goodreads(goodreads_id):
 
     ratings = [(s1, s2, s3, s4, s5).count('p10') for (s1, s2, s3, s4, s5) in groupwise(stars)]
     
-    book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
-    df = pd.merge(pd.DataFrame({'title' : books, 'rating' : ratings}), book_map, on='title')
-    df = df.drop('title', axis=1).rename({'id' : 'book_id'}, axis=1)
+    #book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
+    
+    #books = books[np.isin(
+    #df = pd.DataFrame({
+    #    'user_id': 0,
+    #    'book_id': book_map['id'][book_map['title'].isin(books)].values,
+    #    'rating': ratings
+    #})
+    df = pd.merge(pd.DataFrame({'title' : books, 'rating' : ratings}), book_map[['id', 'title']], on = 'title')
+    df = df.loc[df['rating'] != 0].drop('title', axis = 1).rename({'id' : 'book_id'}, axis = 1)
     df['user_id'] = np.repeat(0, df.shape[0])
-    df = df.reindex(columns=['user_id', 'book_id', 'rating'])
-    df = df.loc[df['rating'] != 0]
+    df = df.reindex(columns = ['user_id', 'book_id', 'rating'])
 
     if df.empty:
         raise ValueError('No matching books rated')
     else: return df
+    
+from thisproject import (
+    LightFmRecommender,
+    recommend_list,
+    fetch_user_ratings_dataset,
+    fetch_user_ratings_goodreads
+)
 
 def fancy_title(title):
-    book_map = pd.read_csv('data/books.csv')[['id', 'book_id', 'title', 'authors']]
-    site_id = book_map.loc[book_map['title']==title, 'book_id'].values[0]
-    return '<b>' + f'<a href="https://www.goodreads.com/book/show/{site_id}">' + title + '</a>' + '</b>' + '\n' + str(book_map.loc[book_map['title']==title, 'authors'].values[0]) + '\n\n'
-
-#def fancy_list(reclist):
-#    text = ''
-#    for i, title in enumerate(reclist):
-#        text = text + fancy_title(title) + '\n\n'
-#        
-#    return text
+    #book_map = pd.read_csv('data/books.csv')[['id', 'book_id', 'title', 'authors']]
+    site_id, author = book_map.loc[book_map['title'] == title, ['book_id', 'authors']].values[0]
+    return '<b>' + f'<a href="https://www.goodreads.com/book/show/{site_id}">' + title + '</a>' + '</b>' + '\n' + author + '\n\n'
 
 def fancy_list(reclist):
-    return ''.join([fancy_title(title) for title in reclist])
+    return ''.join(map(fancy_title, reclist))
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
@@ -240,7 +258,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     CallbackContext,
 )
-from getpass import getpass
+#from getpass import getpass
 
 CHOOSING_SCENARIO, SELECTING_ENGINE = map(chr, range(2))
 CHOOSING_USER_ID, CHOOSING_GR_ID, CHOOSING_CUSTOM = map(chr, range(2, 5))
@@ -253,42 +271,41 @@ def start(update, context):
 
     text = "Choose scenario"
     buttons = [[
-                'Dataset Id',
-                'GoodReads Id',
-                'Custom Setup'
-                ]]
-    keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
-    update.message.reply_text(text=text, reply_markup=keyboard)
+        'Dataset Id',
+        'GoodReads Id',
+        'Custom Setup'
+    ]]
+    keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard = True)
+    update.message.reply_text(text = text, reply_markup = keyboard)
 
     return CHOOSING_SCENARIO
 
 def recommend(update, context):
     text = "Choose recommender engine"
-    buttons = [[#'KNN', 
-                #'SVD', 
-                'LightFM', 
-                'Hybrid LightFM']]
-
-    keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
-    update.message.reply_text(text=text, reply_markup=keyboard)
+    buttons = [[
+        #'KNN',
+        #'SVD',
+        'LightFM',
+        'Hybrid LightFM'
+    ]]
+    keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard = True)
+    update.message.reply_text(text=text, reply_markup = keyboard)
 
     return SELECTING_ENGINE
 
 def ask_user_id(update, context):
-    text = 'Type a number between 0 and ' + str(ratings.user_id.nunique())
-    update.message.reply_text(text=text)
+    text = 'Type a number between 1 and ' + str(ratings.user_id.nunique())
+    update.message.reply_text(text = text)
     return TYPING_USER
 
 def ask_user_id_again(update, context):
-    text = 'Wrong input. Type a number between 0 and ' + str(ratings.user_id.nunique())
-    update.message.reply_text(text=text)
+    text = 'Wrong input. Type a number between 1 and ' + str(ratings.user_id.nunique())
+    update.message.reply_text(text = text)
     return TYPING_USER
 
 def save_user_id(update, context):
     try:
         user_id = int(update.message.text)
-        if user_id not in range(ratings.user_id.nunique()+1):
-            raise ValueError
         context.user_data['user_ratings'] = fetch_user_ratings_dataset(user_id)
         return recommend(update, context)
     except ValueError:
@@ -296,18 +313,18 @@ def save_user_id(update, context):
 
 def ask_goodreads_id(update, context):
     text = 'Type your GoodReads Id'
-    update.message.reply_text(text=text)
+    update.message.reply_text(text = text)
     return TYPING_GOODREADS
 
 def ask_goodreads_id_again(update, context):
     text = 'User does not exist or has no books from dataset rated. Please try again or choose different scenario by calling /start'
-    update.message.reply_text(text=text)
+    update.message.reply_text(text = text)
     return TYPING_GOODREADS
 
 def save_goodreads_id(update, context):
     try:
-        user_id = int(update.message.text)
-        context.user_data['user_ratings'] = fetch_user_ratings_goodreads(user_id)
+        goodreads_id = int(update.message.text)
+        context.user_data['user_ratings'] = fetch_user_ratings_goodreads(goodreads_id)
         return recommend(update, context)
     except ValueError:
         return ask_goodreads_id_again(update, context)
@@ -315,17 +332,17 @@ def save_goodreads_id(update, context):
 def ask_book_rating(update, context):
     text = 'Type the book title you want to rate or finish rating'
     buttons = [['Finish']]
-    keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
-    update.message.reply_text(text=text, reply_markup=keyboard)
+    keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard = True)
+    update.message.reply_text(text = text, reply_markup = keyboard)
     return TYPING_BOOK
 
 def save_selected_book(update, context):
     book_name = update.message.text
-    book_map = pd.read_csv('data/books.csv')[['id', 'authors', 'title']]
-    try:
-        selected_book = process.extract(book_name, book_map['title'].values, scorer=fuzz.ratio)[0][0]
-    except:
-        update.message.reply_text(text='BAD')
+    #book_map = pd.read_csv('data/books.csv')[['id', 'authors', 'title']]
+    #try:
+    selected_book = process.extract(book_name, book_map['title'].values, scorer = fuzz.ratio)[0][0]
+    #except:
+    #    update.message.reply_text(text='BAD')
     context.user_data['selected_book'] = selected_book
     
     return show_selected_book(update, context)
@@ -333,9 +350,11 @@ def save_selected_book(update, context):
 def show_selected_book(update, context):
     buttons = [['1','2','3','4','5'],
                ['Cancel', 'Finish']]
-    keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
-    update.message.reply_text(text=fancy_title(context.user_data['selected_book']), parse_mode = 'HTML')
-    update.message.reply_text(text='Now rate it', reply_markup=keyboard)
+    keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard = True)
+    update.message.reply_text(text = fancy_title(context.user_data['selected_book']), 
+                              parse_mode = 'HTML', 
+                              disable_web_page_preview = True)
+    update.message.reply_text(text = 'Now rate it', reply_markup=keyboard)
     
     return SELECTING_RATING
 
@@ -347,22 +366,24 @@ def save_book_rating(update, context):
 
 def rating_finished(update, context):
     books, ratings = zip(*context.user_data['rated_dict'].items())
-    book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
-    book_ids = [book_map.loc[book_map['title']==i, 'id'].values[0] for i in books]
+    #book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
+    #book_ids = [book_map.loc[book_map['title'] == i, 'id'].values[0] for i in books]
+    book_ids = book_map['id'][book_map['title'].isin(books)].values
+    #book_ids = book_map.id.values[np.isin(book_map.title, books)]
     context.user_data['user_ratings'] = pd.DataFrame(
-        {'user_id' : [0]*len(book_ids), 'book_id' : book_ids, 'rating' : ratings})
+        {'user_id' : np.repeat(0, len(book_ids)), 'book_id' : book_ids, 'rating' : ratings})
     
     return recommend(update, context)
 
 def rec_knn(update, context):
-    warn = update.message.reply_text(text='This takes time')
-    knn = KNNWithMeans(k=9, verbose=False)
+    warn = update.message.reply_text(text = 'This takes time')
+    knn = KNNWithMeans(k = 9, verbose = False)
     reclist = recommend_list(context.user_data['user_ratings'], ratings, knn, verbose = False)
-    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML', disable_web_page_preview = True)
+    warn.edit_text(text = fancy_list(reclist), parse_mode = 'HTML', disable_web_page_preview = True)
 
 def rec_svd(update, context):
-    warn = update.message.reply_text(text='This takes time')
-    svd = SVD(n_factors=20, verbose=False)
+    warn = update.message.reply_text(text = 'This takes time')
+    svd = SVD(n_factors = 20, verbose = False)
     reclist = recommend_list(context.user_data['user_ratings'], ratings, svd, verbose = False)
     warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML', disable_web_page_preview = True)
 
@@ -370,13 +391,13 @@ def rec_lightfm(update, context):
     warn = update.message.reply_text(text='This takes time')
     #reclist = recommend_list_lightfm(context.user_data['user_ratings'], ratings, model, verbose = False)
     reclist = lightfm.predict_list(context.user_data['user_ratings'])
-    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML', disable_web_page_preview = True)
+    warn.edit_text(text = fancy_list(reclist), parse_mode = 'HTML', disable_web_page_preview = True)
 
 def rec_lightfm_hybrid(update, context):
     warn = update.message.reply_text(text='This takes time')
     #reclist = recommend_list_lightfm(context.user_data['user_ratings'], ratings, model, verbose = False)
     reclist = lightfm_hybrid.predict_list(context.user_data['user_ratings'])
-    warn.edit_text(text=fancy_list(reclist), parse_mode = 'HTML', disable_web_page_preview = True)
+    warn.edit_text(text = fancy_list(reclist), parse_mode = 'HTML', disable_web_page_preview = True)
 
 convhandler = ConversationHandler(
     entry_points = [CommandHandler('start', start)],
@@ -399,18 +420,18 @@ convhandler = ConversationHandler(
     fallbacks = [CommandHandler('start', start)]
 )
 
-TOKEN = '1776136579:AAEkS7z3Lr3PrZMDMiXpWKD-OpR7P305K4M'
+TOKEN = os.environ['TOKEN']
 PORT = int(os.environ.get('PORT', '8443'))
 
 def main():
-    updater = Updater(token=TOKEN, use_context=True)
+    updater = Updater(token = TOKEN, use_context = True)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(convhandler)
     #updater.start_polling()
-    updater.start_webhook(listen="0.0.0.0",
-                          port=PORT,
-                          url_path=TOKEN,
-                          webhook_url="https://goodbooks-bot.herokuapp.com/" + TOKEN)
+    updater.start_webhook(listen = '0.0.0.0',
+                          port = PORT,
+                          url_path = TOKEN,
+                          webhook_url = 'https://goodbooks-bot.herokuapp.com/' + TOKEN)
     updater.idle()
 
 if __name__ == '__main__':
