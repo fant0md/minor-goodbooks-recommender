@@ -24,7 +24,7 @@ with open('lightfm_hybrid.pickle', 'rb') as f:
     lightfm_hybrid = pickle.load(f)
 
 from thisproject import (
-    LightFmRecommender,
+    LightFM_Recommender,
     recommend_list,
     fetch_user_ratings_dataset,
     fetch_user_ratings_goodreads
