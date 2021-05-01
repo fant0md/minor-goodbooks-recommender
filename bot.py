@@ -5,9 +5,9 @@ import time
 import copy
 import os
 import pickle
-from surprise import Reader
-from surprise import Dataset as SurpriseDataset
-from surprise import KNNWithMeans, SVD, SVDpp
+#from surprise import Reader
+#from surprise import Dataset as SurpriseDataset
+#from surprise import KNNWithMeans, SVD, SVDpp
 from lightfm import LightFM
 from fuzzywuzzy import fuzz, process
 
@@ -34,10 +34,17 @@ pd.options.mode.chained_assignment = None
 #ratings = pd.read_csv('data/ratings.csv')
 book_map = pd.read_csv('data/books.csv')[['book_id', 'id', 'title', 'authors']]
 
-with open('lightfm.pickle', 'rb') as f:
-    lightfm = pickle.load(f)
-with open('lightfm_hybrid.pickle', 'rb') as f:
-    lightfm_hybrid = pickle.load(f)
+#with open('lightfm.pickle', 'rb') as f:
+#    lightfm = pickle.load(f)
+
+#with open('lightfm_hybrid.pickle', 'rb') as f:
+#    lightfm_hybrid = pickle.load(f)
+
+    
+def load_model(model_name):
+    with open(str(model_name), 'rb') as f:
+        model = pickle.load(f)
+    return model
 
 
 def fancy_title(title):
@@ -195,12 +202,14 @@ def rating_finished(update, context):
 
 
 def rec_lightfm(update, context):
+    lightfm = load_model('lightfm.pickle')
     warn = update.message.reply_text(text='This takes time')
     reclist = lightfm.predict_list(context.user_data['user_ratings'])
     warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
 
 
 def rec_lightfm_hybrid(update, context):
+    lightfm_hybrid = load_model('lightfm_hybrid.pickle')
     warn = update.message.reply_text(text='This takes time')
     reclist = lightfm_hybrid.predict_list(context.user_data['user_ratings'])
     warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)

@@ -10,7 +10,7 @@ from surprise import KNNWithMeans, SVD, SVDpp
 from lightfm import LightFM
 # from lightfm.data import Dataset as LightfmDataset
 
-ratings = pd.read_csv('data/ratings.csv')
+#ratings = pd.read_csv('data/ratings.csv')
 book_map = pd.read_csv('data/books.csv')
 
 
