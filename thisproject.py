@@ -144,6 +144,7 @@ def recommend_list(user_ratings, ratings_data, algorithm, verbose=False, remove_
 
 
 def fetch_user_ratings_dataset(user_id):
+    ratings = pd.read_csv('data/ratings.csv')
     if user_id < 1 or user_id > ratings['user_id'].nunique():
         raise ValueError
     df = ratings.loc[ratings['user_id'] == user_id, :]
@@ -182,7 +183,7 @@ def fetch_user_ratings_goodreads(goodreads_id):
         a = iter(iterable)
         return zip(a, a, a, a, a)
 
-    ratings = [(s1, s2, s3, s4, s5).count('p10') for (s1, s2, s3, s4, s5) in groupwise(stars)]
+    rates = [(s1, s2, s3, s4, s5).count('p10') for (s1, s2, s3, s4, s5) in groupwise(stars)]
 
     # book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
 
@@ -190,9 +191,9 @@ def fetch_user_ratings_goodreads(goodreads_id):
     # df = pd.DataFrame({
     #    'user_id': 0,
     #    'book_id': book_map['id'][book_map['title'].isin(books)].values,
-    #    'rating': ratings
+    #    'rating': rates
     # })
-    df = pd.merge(pd.DataFrame({'title': books, 'rating': ratings}), book_map[['id', 'title']], on='title')
+    df = pd.merge(pd.DataFrame({'title': books, 'rating': rates}), book_map[['id', 'title']], on='title')
     df = df.loc[df['rating'] != 0].drop('title', axis=1).rename({'id': 'book_id'}, axis=1)
     df['user_id'] = np.repeat(0, df.shape[0])
     df = df.reindex(columns=['user_id', 'book_id', 'rating'])
@@ -201,8 +202,3 @@ def fetch_user_ratings_goodreads(goodreads_id):
         raise ValueError('No matching books rated')
     else:
         return df
-
-
-if __name__ == "__main__":
-    ratings = pd.read_csv('data/ratings.csv')
-    book_map = pd.read_csv('data/books.csv')

@@ -31,7 +31,7 @@ from telegram.ext import (
 
 pd.options.mode.chained_assignment = None
 
-ratings = pd.read_csv('data/ratings.csv')
+#ratings = pd.read_csv('data/ratings.csv')
 book_map = pd.read_csv('data/books.csv')[['book_id', 'id', 'title', 'authors']]
 
 with open('lightfm.pickle', 'rb') as f:
@@ -87,14 +87,14 @@ def recommend(update, context):
 
 
 def ask_user_id(update, context):
-    text = 'Type a number between 1 and ' + str(ratings.user_id.nunique())
+    text = 'Type a number between 1 and ' + str(53424)
     update.message.reply_text(text=text)
     
     return TYPING_USER
 
 
 def ask_user_id_again(update, context):
-    text = 'Wrong input. Type a number between 1 and ' + str(ratings.user_id.nunique())
+    text = 'Wrong input. Type a number between 1 and ' + str(53424)
     update.message.reply_text(text=text)
     
     return TYPING_USER
@@ -169,41 +169,39 @@ def save_book_rating(update, context):
 
 
 def rating_finished(update, context):
-    books, ratings = zip(*context.user_data['rated_dict'].items())
+    books, rates = zip(*context.user_data['rated_dict'].items())
     # book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
     # book_ids = [book_map.loc[book_map['title'] == i, 'id'].values[0] for i in books]
     book_ids = book_map['id'][book_map['title'].isin(books)].values
     # book_ids = book_map.id.values[np.isin(book_map.title, books)]
     context.user_data['user_ratings'] = pd.DataFrame(
-        {'user_id': np.repeat(0, len(book_ids)), 'book_id': book_ids, 'rating': ratings})
+        {'user_id': np.repeat(0, len(book_ids)), 'book_id': book_ids, 'rating': rates})
 
     return recommend(update, context)
 
 
-def rec_knn(update, context):
-    warn = update.message.reply_text(text='This takes time')
-    knn = KNNWithMeans(k=9, verbose=False)
-    reclist = recommend_list(context.user_data['user_ratings'], ratings, knn, verbose=False)
-    warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
+#def rec_knn(update, context):
+#    warn = update.message.reply_text(text='This takes time')
+#    knn = KNNWithMeans(k=9, verbose=False)
+#    reclist = recommend_list(context.user_data['user_ratings'], ratings, knn, verbose=False)
+#    warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
 
 
-def rec_svd(update, context):
-    warn = update.message.reply_text(text='This takes time')
-    svd = SVD(n_factors=20, verbose=False)
-    reclist = recommend_list(context.user_data['user_ratings'], ratings, svd, verbose=False)
-    warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
+#def rec_svd(update, context):
+#    warn = update.message.reply_text(text='This takes time')
+#    svd = SVD(n_factors=20, verbose=False)
+#    reclist = recommend_list(context.user_data['user_ratings'], ratings, svd, verbose=False)
+#    warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
 
 
 def rec_lightfm(update, context):
     warn = update.message.reply_text(text='This takes time')
-    # reclist = recommend_list_lightfm(context.user_data['user_ratings'], ratings, model, verbose = False)
     reclist = lightfm.predict_list(context.user_data['user_ratings'])
     warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
 
 
 def rec_lightfm_hybrid(update, context):
     warn = update.message.reply_text(text='This takes time')
-    # reclist = recommend_list_lightfm(context.user_data['user_ratings'], ratings, model, verbose = False)
     reclist = lightfm_hybrid.predict_list(context.user_data['user_ratings'])
     warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
 
