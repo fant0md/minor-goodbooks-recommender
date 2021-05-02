@@ -9,3 +9,7 @@ bot.ipynb
 goodreads-parser.ipynb
 
 recommendation-lists.ipynb
+
+.idea/
+
+reports.txt
