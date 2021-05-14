@@ -40,14 +40,14 @@ start_text = '''
 
 Сейчас Вам будет предложено выбрать один из сценариев, на основе которых будет осуществляться подбор книг:
 
-* Dataset ID – любое число от 1 до 53424 Cледует выбрать этот вариант, если у Вас отсутствует аккаунт на * GoodReads, Вы не готовы тратить время на оценку уже прочитанных Вами книг и/или у Вас отсутствует читательский опыт
-
-* GoodReads ID – Ваш ID на сайте GoodReads
-
-* Custom Setup – Вы хотите получить рекомендацию на основе оценивания уже прочитанных Вами книг
+<ul>
+    <li>Dataset ID – любое число от 1 до 53424 Cледует выбрать этот вариант, если у Вас отсутствует аккаунт на GoodReads, Вы не готовы тратить время на оценку уже прочитанных Вами книг и/или у Вас отсутствует читательский опыт</li>
+    <li>GoodReads ID – Ваш ID на сайте GoodReads</li>
+    <li>Custom Setup – Вы хотите получить рекомендацию на основе оценивания уже прочитанных Вами книг</li>
+</ul>
 '''
 
-recommend_text = 'Выберите рекоммендательный алгоритм. Hybrid LightFM использует описание книг, поэтому благодаря ей рекомендации могут быть более адекватными, но стоит испытать обе рекомендательные системы'
+recommend_text = 'Выберите рекоммендательный алгоритм. Hybrid LightFM использует описание книг, поэтому благодаря ему рекомендации могут быть лучше, однако и работает медленнее. Стоит испытать обе рекомендательные системы'
 
 rating_text = '''
 Введите название книги, которую Вы желаете оценить, на английском. Система выдаст Вам полное название книги (имя автора + название) и предложит оценить книгу от 1 до 5. После оценки первой книги Вы сможете либо написать название ещё одной или нескольких книг для последующей оценки, либо выбрать клавишу «Finish» и перейти к получению рекомендации.
@@ -55,7 +55,7 @@ rating_text = '''
 
 scenario_text = 'Выберите сценарий'
 nouser_text = 'Пользователь не существует или не оценил ни одной книги из датасета. Попробуйте снова или выберите другой сценарий вызвав /start'
-gr_text = 'Укажите Ваш ID на сайте GoodRead'
+gr_text = 'Укажите Ваш ID на сайте GoodReads'
 askbook_text = 'Введите название книги (на английском) или закончите оценивание'
 nowrate_text = 'Теперь оцените книгу'
 wait_text = 'Это займет некоторое время'
@@ -153,7 +153,7 @@ def save_goodreads_id(update, context):
         goodreads_id = int(update.message.text)
         context.user_data['user_ratings'] = fetch_user_ratings_goodreads(goodreads_id)
         return recommend(update, context)
-    except ValueError:
+    except:
         return ask_goodreads_id_again(update, context)
 
     
@@ -277,10 +277,12 @@ def main():
     updater = Updater(token=TOKEN, use_context=True)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(convhandler)
-    updater.start_webhook(listen='0.0.0.0',
-                          port=PORT,
-                          url_path=TOKEN,
-                          webhook_url='https://goodbooks-bot.herokuapp.com/' + TOKEN)
+    updater.start_webhook(
+        listen='0.0.0.0',
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url='https://goodbooks-bot.herokuapp.com/' + TOKEN
+    )
     updater.idle()
 
 
