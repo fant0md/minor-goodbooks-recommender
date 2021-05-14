@@ -41,8 +41,8 @@ start_text = '''
 Сейчас Вам будет предложено выбрать один из сценариев, на основе которых будет осуществляться подбор книг:
 
     Dataset ID – любое число от 1 до 53424 Cледует выбрать этот вариант, если у Вас отсутствует аккаунт на GoodReads, Вы не готовы тратить время на оценку уже прочитанных Вами книг и/или у Вас отсутствует читательский опыт
-    GoodReads ID – Ваш ID на сайте GoodReads</li>
-    Custom Setup – Вы хотите получить рекомендацию на основе оценивания уже прочитанных Вами книг</li>
+    GoodReads ID – Ваш ID на сайте GoodReads
+    Custom Setup – Вы хотите получить рекомендацию на основе оценивания уже прочитанных Вами книг
 '''
 
 recommend_text = 'Выберите рекоммендательный алгоритм. Hybrid LightFM использует описание книг, поэтому благодаря ему рекомендации могут быть лучше, однако и работает медленнее. Стоит испытать обе рекомендательные системы'
@@ -87,7 +87,7 @@ def start(update, context):
     context.user_data['rated_dict'] = {}
     context.user_data['selected_book'] = None
     
-    update.message.reply_text(text=start_text, parse_mode='HTML')
+    update.message.reply_text(text=start_text)
     
     buttons = [[
         'Dataset Id',
