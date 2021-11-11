@@ -1,5 +1,9 @@
 # minor goodbooks recommender
 
-@BookRecBot
+The final project for minor "Introdution to Data Analysis" at HSE. The code performs a book recommendation system with a telegram bot interface.
 
-data from https://www.kaggle.com/zygmunt/goodbooks-10k
+
+Bot: @BookRecBot
+
+
+The data is from https://www.kaggle.com/zygmunt/goodbooks-10k
