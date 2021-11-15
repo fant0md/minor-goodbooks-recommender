@@ -1,21 +1,17 @@
 import pandas as pd
 import numpy as np
 import scipy.sparse as sp
-import time
-import copy
-import os
-import pickle
-#from surprise import Reader
-#from surprise import Dataset as SurpriseDataset
-#from surprise import KNNWithMeans, SVD, SVDpp
+import time, copy, os, pickle, re
 from lightfm import LightFM
 from fuzzywuzzy import fuzz, process
 
 from thisproject import (
-    LightFM_Recommender,
-    recommend_list,
+    DatasetFaster,
     fetch_user_ratings_dataset,
-    fetch_user_ratings_goodreads
+    fetch_user_ratings_goodreads,
+    predict_list,
+    load_model,
+    book_map,
 )
 
 from telegram import Update, ReplyKeyboardMarkup
@@ -31,47 +27,34 @@ from telegram.ext import (
 
 pd.options.mode.chained_assignment = None
 
-#ratings = pd.read_csv('data/ratings.csv')
-book_map = pd.read_csv('data/books.csv')[['book_id', 'id', 'title', 'authors']]
-
 
 start_text = '''
-Здравствуйте. Я Ваш виртуальный помощник, осуществляющий рекомендацию книг.
-
-Сейчас Вам будет предложено выбрать один из сценариев, на основе которых будет осуществляться подбор книг:
-
-    Dataset ID – любое число от 1 до 53424 Cледует выбрать этот вариант, если у Вас отсутствует аккаунт на GoodReads, Вы не готовы тратить время на оценку уже прочитанных Вами книг и/или у Вас отсутствует читательский опыт
-    GoodReads ID – Ваш ID на сайте GoodReads
-    Custom Setup – Вы хотите получить рекомендацию на основе оценивания уже прочитанных Вами книг
+This is an interactiove recommendation system for the books on goodreads. See github.com/yuasosnin/minor-goodbooks-recommender
 '''
 
-recommend_text = 'Выберите рекоммендательный алгоритм. Hybrid LightFM использует описание книг, поэтому благодаря ему рекомендации могут быть лучше, однако и работает медленнее. Стоит испытать обе рекомендательные системы'
+recommend_text = 'Choose a recommender algorithm. Currently only one is available'
 
 rating_text = '''
-Введите название книги, которую Вы желаете оценить, на английском. Система выдаст Вам полное название книги (имя автора + название) и предложит оценить книгу от 1 до 5. После оценки первой книги Вы сможете либо написать название ещё одной или нескольких книг для последующей оценки, либо выбрать клавишу «Finish» и перейти к получению рекомендации.
+Type in the title of the book you want to rate. The bot will response with the closest find in the dataset and ask a rating. After that you can continue rating or finish and proceed to recommenation. It is recommended to rate several books.
 '''
 
-scenario_text = 'Выберите сценарий'
-nouser_text = 'Пользователь не существует или не оценил ни одной книги из датасета. Попробуйте снова или выберите другой сценарий вызвав /start'
-gr_text = 'Укажите Ваш ID на сайте GoodReads'
-askbook_text = 'Введите название книги (на английском) или закончите оценивание'
-nowrate_text = 'Теперь оцените книгу'
-wait_text = 'Это займет некоторое время'
-id_text = 'Введите число от 1 до ' + str(53424)
-wrongid_text = 'Неподходящий ввод. Введите число от 1 до ' + str(53424)
-
-
-def load_model(model_name):
-    with open(str(model_name), 'rb') as f:
-        model = pickle.load(f)
-    return model
+scenario_text = '''You can choose one of available scenarios:
+    Dataset ID – recommend books for one of users from dataset (for demonstration purposes)
+    GoodReads ID – your Goodreads profile ID or link
+    Custom Setup – interactive rating process
+'''
+nouser_text = 'User does not exist or has no books from dataset rated. Please try again or choose a different scenario by calling /start'
+gr_text = 'Paste a link to your Goodreads profile'
+askbook_text = 'Type next book name or finish rating'
+nowrate_text = 'Now rate the book'
+wait_text = 'This takes some time'
+id_text = 'Type in a number between 1 and ' + str(53424)
+wrongid_text = 'Wrong number. Please type in a number between 1 and ' + str(53424)
 
 
 def fancy_title(title):
-    # book_map = pd.read_csv('data/books.csv')[['id', 'book_id', 'title', 'authors']]
     site_id, author = book_map.loc[book_map['title'] == title, ['book_id', 'authors']].values[0]
     return '<b>' + f'<a href="https://www.goodreads.com/book/show/{site_id}">' + title + '</a>' + '</b>' + '\n' + author + '\n\n'
-
 
 def fancy_list(reclist):
     return ''.join(map(fancy_title, reclist))
@@ -87,7 +70,7 @@ def start(update, context):
     context.user_data['rated_dict'] = {}
     context.user_data['selected_book'] = None
     
-    update.message.reply_text(text=start_text)
+    update.message.reply_text(text=start_text, disable_web_page_preview=True)
     
     buttons = [[
         'Dataset Id',
@@ -102,10 +85,8 @@ def start(update, context):
 
 def recommend(update, context):
     buttons = [[
-        # 'KNN',
-        # 'SVD',
         'LightFM',
-        'Hybrid LightFM'
+        #'Hybrid LightFM'
     ]]
     keyboard = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
     update.message.reply_text(text=recommend_text, reply_markup=keyboard)
@@ -148,7 +129,7 @@ def ask_goodreads_id_again(update, context):
 
 def save_goodreads_id(update, context):
     try:
-        goodreads_id = int(update.message.text)
+        goodreads_id = int(re.search('[0-9]+', update.message.text).group())
         context.user_data['user_ratings'] = fetch_user_ratings_goodreads(goodreads_id)
         return recommend(update, context)
     except:
@@ -206,32 +187,23 @@ def rating_finished(update, context):
     return recommend(update, context)
 
 
-#def rec_knn(update, context):
-#    warn = update.message.reply_text(text='This takes time')
-#    knn = KNNWithMeans(k=9, verbose=False)
-#    reclist = recommend_list(context.user_data['user_ratings'], ratings, knn, verbose=False)
-#    warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
-
-
-#def rec_svd(update, context):
-#    warn = update.message.reply_text(text='This takes time')
-#    svd = SVD(n_factors=20, verbose=False)
-#    reclist = recommend_list(context.user_data['user_ratings'], ratings, svd, verbose=False)
-#    warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
-
-
 def rec_lightfm(update, context):
-    lightfm = load_model('lightfm.pickle')
+    lightfm = load_model('lightfm1.pickle')
     warn = update.message.reply_text(text=wait_text)
-    reclist = lightfm.predict_list(context.user_data['user_ratings'])
-    warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
+    
+    ratings = pd.read_csv('data/ratings.csv')
+    dataset = DatasetFaster()
+    dataset.fit(ratings.user_id.nunique(), 10000)
+    interactions_new, weights_new = dataset.build_interactions(ratings, context.user_data['user_ratings'])
 
-
-def rec_lightfm_hybrid(update, context):
-    lightfm_hybrid = load_model('lightfm_hybrid.pickle')
-    warn = update.message.reply_text(text=wait_text)
-    reclist = lightfm_hybrid.predict_list(context.user_data['user_ratings'])
-    warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
+    lightfm.fit_partial(
+        interactions=interactions_new,
+        sample_weight=weights_new
+    )
+    
+    reclist = predict_list(lightfm, context.user_data['user_ratings'])
+    # warn.edit_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
+    rec = update.message.reply_text(text=fancy_list(reclist), parse_mode='HTML', disable_web_page_preview=True)
 
 
 convhandler = ConversationHandler(
@@ -258,20 +230,18 @@ convhandler = ConversationHandler(
             MessageHandler(Filters.regex('^Cancel$'), ask_book_rating)
         ],
         SELECTING_ENGINE: [
-            # MessageHandler(Filters.regex('^KNN$'), rec_knn),
-            # MessageHandler(Filters.regex('^SVD$'), rec_svd),
             MessageHandler(Filters.regex('^LightFM$'), rec_lightfm),
-            MessageHandler(Filters.regex('^Hybrid LightFM$'), rec_lightfm_hybrid)
+            # MessageHandler(Filters.regex('^Hybrid LightFM$'), rec_lightfm_hybrid)
         ]
     },
     fallbacks=[CommandHandler('start', start)]
 )
 
-TOKEN = os.environ['TOKEN']
-PORT = int(os.environ.get('PORT', '8443'))
-
 
 def main():
+    TOKEN = os.environ['TOKEN']
+    PORT = int(os.environ.get('PORT', '8443'))
+    
     updater = Updater(token=TOKEN, use_context=True)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(convhandler)

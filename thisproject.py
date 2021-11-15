@@ -1,27 +1,39 @@
 import pandas as pd
 import numpy as np
 import scipy.sparse as sp
-import copy
-import requests
-import re
-import bs4
-from surprise import Reader, Dataset
-from surprise import KNNWithMeans, SVD, SVDpp
+import copy, requests, re, bs4, os, pickle
 from lightfm import LightFM
-# from lightfm.data import Dataset as LightfmDataset
 
-#ratings = pd.read_csv('data/ratings.csv')
 book_map = pd.read_csv('data/books.csv')
+NITEMS = 10000
 
 
-class LightFM_Recommender():
+class DatasetFaster():
+    
+    '''Used to create dataset of proper format to feed to LightFM'''
+    
     def __init__(self):
         pass
-
-    def build_interactions(self, ratings_data):
+    
+    def fit(self, n_users, n_items):
+        self.n_users = n_users
+        self.n_items = n_items
+        
+    def build_interactions(self, ratings_data, user_ratings=None):
+        
+        '''
+        Creates COO matrices of weights and interactions. 
+        Replaces id-0 user with zeroes or custom user_ratings, if provided.
+        The model is to be fitted with 0's, then refitted partially with new user_ratings.
+        '''
+        
+        ratings_data_local = copy.deepcopy(ratings_data)
+        ratings_data_local['user_id'] = pd.factorize(ratings_data_local['user_id'])[0]
+        
+        'create interactions and weights'
         interactions = sp.coo_matrix((
-            np.repeat(1, ratings_data.shape[0]),
-            (ratings_data['user_id'], ratings_data['book_id'] - 1)
+            np.repeat(1, ratings_data_local.shape[0]),
+            (ratings_data_local['user_id'], ratings_data_local['book_id'] - 1)
         ))
         if interactions.shape[1] < self.n_items:
             interactions = sp.hstack((
@@ -29,18 +41,16 @@ class LightFM_Recommender():
                 sp.coo_matrix((1, self.n_items - interactions.shape[1])),
             ))
         weights = sp.coo_matrix((
-            ratings_data['rating'],
-            (ratings_data['user_id'], ratings_data['book_id'] - 1)
+            ratings_data_local['rating'],
+            (ratings_data_local['user_id'], ratings_data_local['book_id'] - 1)
         ))
         if weights.shape[1] < self.n_items:
             weights = sp.hstack((
                 weights,
                 sp.coo_matrix((1, self.n_items - weights.shape[1])),
             ))
-
-        return interactions, weights
-
-    def update_interacions(self, user_ratings=None):
+            
+        'create 0 user vector'
         if user_ratings is not None:
             user_vector = sp.coo_matrix((
                 np.repeat(1, user_ratings.shape[0]),
@@ -53,152 +63,110 @@ class LightFM_Recommender():
                 ))
         else:
             user_vector = sp.coo_matrix((1, self.n_items))
-
+        
+        'stack 0 user vector and weights/insteractions'
         interactions_upd = sp.vstack((
             user_vector,
-            self.interactions
+            interactions
         ))
         weights_upd = sp.vstack((
             user_vector,
-            self.weights
+            weights
         ))
+        
         return interactions_upd, weights_upd
 
-#    def build_item_features(self, item_features):
-#        # from sklearn.preprocessing import normalize
-#        feats_kostyl = sp.hstack((
-#            item_features,
-#            sp.coo_matrix((item_features.shape[0], item_features.shape[0] - item_features.shape[1])),
-#        ))
-#        # return sp.identity(item_features.shape[0])+feats_kostyl
-#        # return feats_kostyl
-#        # return normalize(feats_kostyl, norm='l1', axis=1)
-#        return feats_kostyl
-
-    def fit(self, ratings_data, algorithm, user_feats=None, item_feats=None):
-        self.n_users = ratings_data['user_id'].nunique()
-        self.n_items = 10000
-        ratings_data_local = copy.deepcopy(ratings_data)
-        # reset user id
-        if ratings_data_local.shape[0] < 5976479:
-            ratings_data_local['user_id'] = ratings_data_local['user_id'].replace(
-                dict(zip(ratings_data_local['user_id'].unique(), np.arange(self.n_users))))
-        #
-        self.algorithm = copy.deepcopy(algorithm)
-        self.interactions, self.weights = self.build_interactions(ratings_data_local)
-        if item_feats is None:
-            self.item_features = None
-        elif item_feats.shape[0] == item_feats.shape[1] == self.n_items:
-            self.item_features = item_feats
-        else:
-            raise ValueError
-
-        interactions_upd, weights_upd = self.update_interacions()
-
-        self.algorithm.fit(
-            interactions=interactions_upd,
-            # user_features = self.user_features,
-            item_features=self.item_features,
-            sample_weight=weights_upd,
-            epochs=10
-        )
-        return self
-
-    def predict_list(self, user_ratings, n=10, handle_series=False):
-        interactions_new, weights_new = self.update_interacions(user_ratings)
-
-        algorithm_local = copy.deepcopy(self.algorithm)
-        algorithm_local.fit_partial(
-            interactions=interactions_new,
-            # user_features = self.user_features,
-            item_features=self.item_features,
-            sample_weight=weights_new
-        )
-        algorithm_local.item_biases = np.zeros_like(algorithm_local.item_biases)
-
-        # titles = pd.read_csv('data/books.csv')['title'].values
-        titles = book_map['title'].values
-        known_positives = titles[weights_new.tocsr()[0].indices]
-        preds = algorithm_local.predict(0, np.arange(self.n_items))
-        books_sorted = titles[np.argsort(-preds)]
-
-        return books_sorted[~np.isin(books_sorted, known_positives)][:n]
-
-
-def recommend_list(user_ratings, ratings_data, algorithm, verbose=False, remove_rated=True, n=10):
-    reader = Reader(rating_scale=(1, 5))
-    data_full = Dataset.load_from_df(
-        user_ratings.copy().append(ratings_data), reader
-    ).build_full_trainset()
-    algorithm.fit(data_full)
-    preds = [algorithm.predict(0, i).est for i in data_full['book_id'].unique()]
-
-    titles = book_map['title'].values
-    books_sorted = titles[np.argsort(-preds)]
-    known_positives = titles[user_ratings['book_id'].unique() - 1]
-
-    if remove_rated:
-        return books_sorted[~np.isin(books_sorted, known_positives)][:n]
+    
+def predict_list(lightfm_model, user_ratings, n=10, escape_series=False):
+    
+    '''Makes a prediction list from a fitted LightFM model'''
+    
+    rated = np.array(user_ratings.book_id-1)
+    known_positives = book_map.title[rated]
+    
+    preds = lightfm_model.predict(0, np.arange(NITEMS))
+    books_sorted = book_map.title[np.argsort(-preds)]
+    
+    if escape_series:
+        rated_series = book_map.series[rated].unique()
+        rated_series = rated_series[rated_series != np.array(None)]
+        books_escaped = book_map.title[np.isin(book_map.series, rated_series)]
+        return books_sorted[~np.isin(books_sorted, known_positives) & ~np.isin(books_sorted, books_escaped)][:n]
     else:
-        return books_sorted[:n]
+        return books_sorted[~np.isin(books_sorted, known_positives)][:n]
 
 
-def fetch_user_ratings_dataset(user_id):
+def fetch_user_ratings_dataset(user_id: int) -> pd.DataFrame:
+    
+    '''Returns a slice of the original dataset with ratings from a given user, where user_id is set to 0.'''
+    
     ratings = pd.read_csv('data/ratings.csv')
     if user_id < 1 or user_id > ratings['user_id'].nunique():
-        raise ValueError
+        raise ValueError('User not in dataset')
     df = ratings.loc[ratings['user_id'] == user_id, :]
     df['user_id'] = np.repeat(0, df.shape[0])
     return df
 
 
-def fetch_user_ratings_goodreads(goodreads_id):
-    import requests
-    url = f"https://www.goodreads.com/review/list/{goodreads_id}?print=true"
+def fetch_user_ratings_goodreads(goodreads_id: int) -> pd.DataFrame:
+    
+    '''Parses goodreads account with given id and returns a dataset with columns user_id, book_id and rating, 
+    where user_id is set to 0.'''
+    
+    import requests, re, bs4
+    from itertools import chain
+    
+    url = f'https://www.goodreads.com/review/list/{goodreads_id}?print=true'
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 \
     (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-    html_output = requests.get(url=url, headers=headers).text
-
-    import re
-    if re.search('</a>\n        Oops - we couldn\'t find that user.\n      </div>', html_output):
+    first_page = requests.get(url=url, headers=headers).text
+    first_page_bs = bs4.BeautifulSoup(first_page, 'html.parser')
+    
+    if re.search('Oops - we couldn\'t find that user.', first_page):
         raise ValueError('User does not exist')
+    elif re.search('Sorry, that person\'s shelf is private.', first_page):
+        raise ValueError('User profile is private')
+    
+    num_books = int(re.findall('books on Goodreads \((.*) book', first_page)[0])
+    
+    if num_books == 0:
+        raise ValueError('No books rated')
+    
+    def get_books(page: bs4.BeautifulSoup) -> tuple:
+        
+        '''
+        Yields dict of books from a bs4-formatted page to pass to pd.DataFrame constructor.
+        Needed for processing one page separately.
+        '''
+        
+        for book in page.find_all('tr')[2:]:
+            title = book.find('td', {'class':'field title'}).a.get('title')
+            rating = len(book.find_all('span', {'class': 'staticStar p10'}))
+            book_id = book_map.id[book_map.title == title].values
 
-    num_books = int(re.findall('books on Goodreads \((.*) books\)', html_output)[0])
-    for p in np.arange(2, (num_books // 20 + (num_books % 20 > 0) + 1)):
-        url = f"https://www.goodreads.com/review/list/{goodreads_id}?page={p}&print=true"
-        html_output += requests.get(url=url, headers=headers).text
-
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html_output, 'html.parser')
-
-    bad_stuff_titles = ['Goodreads Home', None, 'My group discussions', 'Messages', 'Friends',
-                        'did not like it', 'it was ok', 'liked it', 'really liked it', 'it was amazing', ]
-    books = [i.get('title') for i in soup.find_all('a')
-             if i.get('title') not in bad_stuff_titles]
-
-    stars = [i.get('class')[1] for i in soup.find_all('span')
-             if i.get('class') in [['staticStar', 'p0'], ['staticStar', 'p10']]]
-
-    def groupwise(iterable):
-        a = iter(iterable)
-        return zip(a, a, a, a, a)
-
-    rates = [(s1, s2, s3, s4, s5).count('p10') for (s1, s2, s3, s4, s5) in groupwise(stars)]
-
-    # book_map = pd.read_csv('data/books.csv')[['id', 'title', 'authors']]
-
-    # books = books[np.isin(
-    # df = pd.DataFrame({
-    #    'user_id': 0,
-    #    'book_id': book_map['id'][book_map['title'].isin(books)].values,
-    #    'rating': rates
-    # })
-    df = pd.merge(pd.DataFrame({'title': books, 'rating': rates}), book_map[['id', 'title']], on='title')
-    df = df.loc[df['rating'] != 0].drop('title', axis=1).rename({'id': 'book_id'}, axis=1)
-    df['user_id'] = np.repeat(0, df.shape[0])
-    df = df.reindex(columns=['user_id', 'book_id', 'rating'])
-
+            if len(book_id) and rating:
+                yield (0, book_id[0], rating)
+    
+    def get_pages(num_books: int) -> bs4.BeautifulSoup:
+        
+        '''Yields bs4-formatted pages passed to get_books'''
+        
+        for page in range(2, num_books // 20 + (num_books % 20 > 0) + 1):
+            url = f"https://www.goodreads.com/review/list/{goodreads_id}?page={page}&print=true"
+            html_output = requests.get(url=url, headers=headers).text
+            page = bs4.BeautifulSoup(html_output, 'html.parser')
+            
+            yield from get_books(page)
+                 
+    df = pd.DataFrame(chain(get_books(first_page_bs), get_pages(num_books)), columns=('user_id', 'book_id', 'rating'))
+    
     if df.empty:
-        raise ValueError('No matching books rated')
+        raise ValueError('No books from dataset rated')
     else:
         return df
+
+    
+def load_model(model_name):
+    with open(str(model_name), 'rb') as f:
+        model = pickle.load(f)
+    return model
