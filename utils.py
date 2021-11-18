@@ -170,3 +170,12 @@ def load_model(model_name):
     with open(str(model_name), 'rb') as f:
         model = pickle.load(f)
     return model
+
+
+def fancy_title(title):
+    site_id, author = book_map.loc[book_map['title'] == title, ['book_id', 'authors']].values[0]
+    return '<b>' + f'<a href="https://www.goodreads.com/book/show/{site_id}">' + title + '</a>' + '</b>' + '\n' + author + '\n\n'
+
+
+def fancy_list(reclist):
+    return ''.join(map(fancy_title, reclist))
