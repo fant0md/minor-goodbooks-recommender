@@ -1,16 +1,14 @@
-.idea/
-__pycache__/
-.ipynb_checkpoints/
-.neptune/
+.idea
+__pycache__
+.ipynb_checkpoints
+.neptune
+.vs
 
-data/books_xml/
-report/
+data/books_xml
+report
+old
 
-data-prep.ipynb
-bot.ipynb
 bot-test.py
-goodreads-parser.ipynb
-recommendation-lists.ipynb
 data/books_parsed.pickle
 data/item_features.npz
 data/books_transform.csv
