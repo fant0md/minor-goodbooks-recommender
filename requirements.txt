@@ -4,6 +4,6 @@ lightfm==1.16
 numpy==1.22.4
 pandas==1.4.2
 python_telegram_bot==13.4.1
-requests==2.25.1
+requests==2.31.0
 scipy==1.10.0
 telegram==0.0.1
